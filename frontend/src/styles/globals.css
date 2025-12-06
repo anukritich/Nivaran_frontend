@@ -1,0 +1,113 @@
+/* Tailwind CSS v4 */
+@import "tailwindcss";
+
+/* Root Variables (Light Mode) */
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+  --card: #ffffff;
+  --card-foreground: #2c3e50;
+  --popover: #ffffff;
+  --popover-foreground: #2c3e50;
+  --primary: #1ABC9C;
+  --primary-foreground: #ffffff;
+  --secondary: #ecf0f1;
+  --secondary-foreground: #2c3e50;
+  --muted: #ecf0f1;
+  --muted-foreground: #7f8c8d;
+  --accent: #16a085;
+  --accent-foreground: #ffffff;
+  --destructive: #e74c3c;
+  --destructive-foreground: #ffffff;
+  --border: rgba(0,0,0,0.1);
+  --input: transparent;
+  --input-background: #f8f9fa;
+  --switch-background: #bdc3c7;
+  --font-weight-medium: 500;
+  --font-weight-normal: 400;
+  --ring: #1ABC9C;
+  --radius: 0.75rem;
+  --sidebar: #f8f9fa;
+  --sidebar-foreground: #2c3e50;
+  --sidebar-primary: #1ABC9C;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #ecf0f1;
+  --sidebar-accent-foreground: #2c3e50;
+  --sidebar-border: #e0e0e0;
+  --sidebar-ring: #1ABC9C;
+  --font-size: 16px;
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+/* Dark Mode Variables */
+.dark {
+  --background: #0a0a0a;
+  --foreground: #ededed;
+  --card: #0a0a0a;
+  --card-foreground: #ededed;
+  --popover: #0a0a0a;
+  --popover-foreground: #ededed;
+  --primary: #1ABC9C;
+  --primary-foreground: #171717;
+  --secondary: #2c3e50;
+  --secondary-foreground: #ededed;
+  --muted: #2c3e50;
+  --muted-foreground: #7f8c8d;
+  --accent: #16a085;
+  --accent-foreground: #ededed;
+  --destructive: #e74c3c;
+  --destructive-foreground: #ffffff;
+  --border: rgba(255,255,255,0.1);
+  --input: #2c3e50;
+  --input-background: #1a1a1a;
+  --switch-background: #444;
+  --ring: #1ABC9C;
+  --sidebar: #171717;
+  --sidebar-foreground: #ededed;
+  --sidebar-primary: #1ABC9C;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #2c3e50;
+  --sidebar-accent-foreground: #ededed;
+  --sidebar-border: #444;
+  --sidebar-ring: #1ABC9C;
+}
+
+/* Base Styles & Tailwind Integration */
+@layer base {
+  *, *::before, *::after {
+    border-color: var(--border);
+    outline-color: color-mix(in srgb, var(--ring) 50%, transparent);
+  }
+
+  body {
+    @apply bg-[var(--background)] text-[var(--foreground)];
+    font-family: var(--font-sans, Arial, Helvetica, sans-serif);
+    font-size: var(--font-size);
+  }
+
+  h1 { font-size: 2rem; font-weight: var(--font-weight-medium); line-height: 1.5; }
+  h2 { font-size: 1.75rem; font-weight: var(--font-weight-medium); line-height: 1.5; }
+  h3 { font-size: 1.5rem; font-weight: var(--font-weight-medium); line-height: 1.5; }
+  h4 { font-size: 1.25rem; font-weight: var(--font-weight-medium); line-height: 1.5; }
+  p, input { font-size: 1rem; font-weight: var(--font-weight-normal); line-height: 1.5; }
+  label, button { font-size: 1rem; font-weight: var(--font-weight-medium); line-height: 1.5; }
+}
+/* Custom Utilities */
+@layer utilities {
+  .bg-card { background-color: var(--card); }
+  .text-card { color: var(--card-foreground); }
+  .bg-popover { background-color: var(--popover); }
+  .text-popover { color: var(--popover-foreground); }
+  .bg-primary { background-color: var(--primary); }
+  .text-primary { color: var(--primary-foreground); }
+  .bg-secondary { background-color: var(--secondary); }
+  .text-secondary { color: var(--secondary-foreground); }
+  .bg-accent { background-color: var(--accent); }
+  .text-accent { color: var(--accent-foreground); }
+  .bg-destructive { background-color: var(--destructive); }
+  .text-destructive { color: var(--destructive-foreground); }
+  .border-primary { border-color: var(--primary); }
+  .border-secondary { border-color: var(--secondary); }
+  .border-accent { border-color: var(--accent); }
+  .border-destructive { border-color: var(--destructive); }
+}
