@@ -5,7 +5,12 @@ import { Filter, Map, List, Search, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Textarea } from "@/components/ui/textarea";
 import { RescueCard, RescueCase } from "@/components/RescueCard";
+import { AdoptionCard, AdoptionAnimal } from "@/components/AdoptionCard";
 import { MapView } from "@/components/MapView";
 import { Card, CardContent } from "@/components/ui/card";
 import { toast } from "sonner";
@@ -44,7 +49,7 @@ function s3UrlForKey(key: string | null) {
 
 export default function DashboardPage({ onNavigate }: { onNavigate?: (p: string) => void }) {
   const [viewMode, setViewMode] = useState<"list" | "map">("list");
-  const [caseType, setCaseType] = useState<"all" | "ongoing" | "completed">("all");
+  const [caseType, setCaseType] = useState<"all" | "ongoing" | "completed" | "adopted">("all");
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [filterSeverity, setFilterSeverity] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
@@ -54,6 +59,30 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (p: string)
   const [ngoEmail, setNgoEmail] = useState<string | null>(null);
   const [editingNgoEmail, setEditingNgoEmail] = useState<string>("");
   const [ngoCoords, setNgoCoords] = useState<{ lat: number; lng: number } | null>(null);
+
+  // Adoption modal state
+  const [showAdoptionModal, setShowAdoptionModal] = useState(false);
+  const [selectedCaseForAdoption, setSelectedCaseForAdoption] = useState<any>(null);
+  const [adoptionForm, setAdoptionForm] = useState({
+    name: "",
+    animal_type: "",
+    age: "",
+    gender: "",
+    breed: "",
+    size: "",
+    neutered: false,
+    vaccinated: false,
+    description: "",
+    health_status: "",
+    temperament: "",
+    good_with_kids: false,
+    good_with_pets: false,
+    image_file: null as File | null,
+    image_base64: ""
+  });
+  const [submittingAdoption, setSubmittingAdoption] = useState(false);
+  const [adoptionStatusMap, setAdoptionStatusMap] = useState<Record<string, { adoption_id: string; status: string }>>({}); // Track which cases are pushed for adoption
+  const [adoptedAnimals, setAdoptedAnimals] = useState<Record<string, AdoptionAnimal>>({}); // Store adoption card data for pushed cases
 
   const router = useRouter();
 
@@ -217,6 +246,95 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (p: string)
     }
   }
 
+  // Fetch adoptions by NGO email for completed cases
+  async function fetchAdoptionsByNgoEmail(email: string) {
+    try {
+      const res = await fetch(`${BACKEND_API}/adoptions?status=all`);
+      if (!res.ok) {
+        console.warn("Failed to fetch adoptions", res.status);
+        return;
+      }
+      const adoptions = await res.json();
+      if (!Array.isArray(adoptions)) return;
+      
+      console.log("[Dashboard] Fetched adoptions:", adoptions.length);
+      
+      // Filter adoptions by NGO email (include both available and adopted)
+      const ngoAdoptions = adoptions.filter((a: any) => 
+        a.ngo_email && 
+        a.ngo_email.toLowerCase() === email.toLowerCase()
+      );
+      
+      console.log("[Dashboard] NGO adoptions (all):", ngoAdoptions.length);
+      ngoAdoptions.forEach((a: any) => {
+        console.log(`  - Adoption ${a.adoption_id}, case_id: ${a.case_id}, status: ${a.adoption_status}`);
+      });
+      
+      // Fetch images for adoptions in batches
+      const batchSize = 6;
+      const enrichedAdoptions: Record<string, AdoptionAnimal> = {};
+      
+      for (let i = 0; i < ngoAdoptions.length; i += batchSize) {
+        const batch = ngoAdoptions.slice(i, i + batchSize);
+        const batchPromises = batch.map(async (adoption: any) => {
+          let imageUrl = "";
+          if (adoption.adoption_id) {
+            try {
+              const imgRes = await fetch(`${BACKEND_API}/adoptions/${adoption.adoption_id}/image-url`);
+              if (imgRes.ok) {
+                const imgData = await imgRes.json();
+                imageUrl = imgData.url;
+              }
+            } catch (e) {
+              console.warn("Failed to fetch adoption image");
+            }
+          }
+          
+          const animal: AdoptionAnimal = {
+            id: adoption.adoption_id,
+            name: adoption.name,
+            type: adoption.animal_type,
+            breed: adoption.breed || "Mixed Breed",
+            age: adoption.age,
+            gender: adoption.gender || "Unknown",
+            location: "Available for Adoption",
+            imageUrl,
+            description: adoption.description || "",
+            vaccinated: adoption.vaccinated || false,
+            neutered: adoption.neutered || false,
+          };
+          
+          return {
+            case_id: adoption.case_id,
+            adoption_id: adoption.adoption_id,
+            status: adoption.adoption_status,
+            animal
+          };
+        });
+        
+        const results = await Promise.all(batchPromises);
+        results.forEach(result => {
+          if (result.case_id) {
+            console.log(`[Dashboard] Mapping case_id ${result.case_id} to adoption ${result.adoption_id}`);
+            enrichedAdoptions[result.case_id] = result.animal;
+            setAdoptionStatusMap(prev => ({
+              ...prev,
+              [result.case_id]: {
+                adoption_id: result.adoption_id,
+                status: result.status
+              }
+            }));
+          }
+        });
+      }
+      
+      console.log("[Dashboard] adoptedAnimals keys:", Object.keys(enrichedAdoptions));
+      setAdoptedAnimals(enrichedAdoptions);
+    } catch (e) {
+      console.warn("Error fetching adoptions", e);
+    }
+  }
+
   // Resolve ngo coordinates by calling GET /ngos and matching by email
   async function fetchNgoCoordsByEmail(email: string) {
     try {
@@ -257,6 +375,11 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (p: string)
         fetchOngoingCases(email);
       }
       fetchNgoCoordsByEmail(email);
+      
+      // Fetch adoptions for completed cases tab
+      if (caseType === "completed") {
+        fetchAdoptionsByNgoEmail(email);
+      }
     } else {
       // Wait for auth state
       const unsubscribe = auth.onAuthStateChanged((u) => {
@@ -269,6 +392,11 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (p: string)
             fetchOngoingCases(u.email);
           }
           fetchNgoCoordsByEmail(u.email);
+          
+          // Fetch adoptions for completed cases tab
+          if (caseType === "completed") {
+            fetchAdoptionsByNgoEmail(u.email);
+          }
         }
       });
       return () => unsubscribe();
@@ -334,14 +462,128 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (p: string)
     }
   };
 
+  const handlePushForAdoption = (id: string) => {
+    const c = cases.find((it) => (it.case_id || it.id) === id || it.id === id);
+    if (!c) {
+      toast.error("Case not found");
+      return;
+    }
+    setSelectedCaseForAdoption(c);
+    setShowAdoptionModal(true);
+  };
+
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setAdoptionForm(prev => ({ ...prev, image_file: file }));
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setAdoptionForm(prev => ({ ...prev, image_base64: reader.result as string }));
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleSubmitAdoption = async () => {
+    if (!ngoEmail) {
+      toast.error("NGO email not found");
+      return;
+    }
+
+    if (!adoptionForm.name || !adoptionForm.animal_type || !adoptionForm.age || !adoptionForm.image_base64) {
+      toast.error("Please fill in all required fields and upload an image");
+      return;
+    }
+
+    setSubmittingAdoption(true);
+
+    try {
+      const res = await fetch(`${BACKEND_API}/adoptions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...adoptionForm,
+          ngo_email: ngoEmail,
+          case_id: selectedCaseForAdoption?.case_id || selectedCaseForAdoption?.id || "",
+        }),
+      });
+
+      if (!res.ok) {
+        const errBody = await res.text().catch(() => "");
+        toast.error(`Failed to post adoption: ${res.status} ${errBody}`);
+        return;
+      }
+
+      const data = await res.json();
+      toast.success(`Animal posted for adoption successfully!`);
+      
+      const caseId = selectedCaseForAdoption?.case_id || selectedCaseForAdoption?.id;
+      
+      // Refresh adoptions data to show the new adoption card
+      if (caseId && data.adoption_id && ngoEmail) {
+        await fetchAdoptionsByNgoEmail(ngoEmail);
+      }
+      
+      setShowAdoptionModal(false);
+      setAdoptionForm({
+        name: "",
+        animal_type: "",
+        age: "",
+        gender: "",
+        breed: "",
+        size: "",
+        neutered: false,
+        vaccinated: false,
+        description: "",
+        health_status: "",
+        temperament: "",
+        good_with_kids: false,
+        good_with_pets: false,
+        image_file: null,
+        image_base64: ""
+      });
+      setSelectedCaseForAdoption(null);
+    } catch (err: any) {
+      console.error("Submit adoption error", err);
+      toast.error("Network error while submitting adoption");
+    } finally {
+      setSubmittingAdoption(false);
+    }
+  };
+
+  const handleMarkAsAdopted = async (adoptionId: string, caseId: string) => {
+    try {
+      const res = await fetch(`${BACKEND_API}/adoptions/${adoptionId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ adoption_status: "adopted" }),
+      });
+
+      if (!res.ok) {
+        const errBody = await res.text().catch(() => "");
+        toast.error(`Failed to mark as adopted: ${res.status} ${errBody}`);
+        return;
+      }
+
+      toast.success("Animal marked as adopted!");
+      
+      // Refresh adoptions to remove adopted animals from view
+      if (ngoEmail) {
+        await fetchAdoptionsByNgoEmail(ngoEmail);
+      }
+    } catch (err: any) {
+      console.error("Mark as adopted error", err);
+      toast.error("Network error while marking as adopted");
+    }
+  };
+
   const filteredRescues = cases
     .map((caseItem) => {
       const id = caseItem.case_id || caseItem.id || Math.random().toString(36).slice(2, 9);
       const imageUrl =
         caseItem.image_presigned_url ||
         (caseItem.s3_key ? s3UrlForKey(caseItem.s3_key) : caseItem.imageUrl || "");
-      
-      console.log(`[Filtered] Case ${id}: image_presigned_url=${caseItem.image_presigned_url}, s3_key=${caseItem.s3_key}, final imageUrl=${imageUrl}`);
       
       const location =
         caseItem.location ||
@@ -363,8 +605,14 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (p: string)
       } as RescueCase & { _raw?: any };
     })
     .filter((rescue) => {
-      // Filter by case type (all, ongoing, completed)
-      if (caseType === "ongoing") {
+      // Filter by case type (all, ongoing, completed, adopted)
+      if (caseType === "adopted") {
+        // For adopted tab, only show if it has an adopted adoption status
+        const adoptionInfo = adoptionStatusMap[rescue.id];
+        if (!adoptionInfo || adoptionInfo.status !== "adopted") {
+          return false;
+        }
+      } else if (caseType === "ongoing") {
         // Show only in-progress cases
         const status = rescue.status.toLowerCase();
         if (status === "completed" || status === "resolved" || status === "closed") {
@@ -374,6 +622,11 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (p: string)
         // Show only completed cases
         const status = rescue.status.toLowerCase();
         if (status !== "completed" && status !== "resolved" && status !== "closed") {
+          return false;
+        }
+        // Don't show adopted animals in completed tab
+        const adoptionInfo = adoptionStatusMap[rescue.id];
+        if (adoptionInfo && adoptionInfo.status === "adopted") {
           return false;
         }
       }
@@ -487,7 +740,7 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (p: string)
         </div>
 
         {/* Case Type Tabs */}
-        <div className="mb-6 flex gap-2">
+        <div className="mb-6 flex gap-2 flex-wrap">
           <Button
             variant={caseType === "all" ? "default" : "outline"}
             onClick={() => setCaseType("all")}
@@ -508,6 +761,13 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (p: string)
             className="flex-1 sm:flex-none"
           >
             Completed Cases
+          </Button>
+          <Button
+            variant={caseType === "adopted" ? "default" : "outline"}
+            onClick={() => setCaseType("adopted")}
+            className="flex-1 sm:flex-none"
+          >
+            Adopted Animals
           </Button>
         </div>
 
@@ -580,16 +840,58 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (p: string)
         ) : viewMode === "list" ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredRescues.length > 0 ? (
-              filteredRescues.map((rescue) => (
-                <RescueCard
-                  key={rescue.id}
-                  rescue={rescue}
-                  // pass original id through so RescueCard's Take Action triggers this handler
-                  onTakeAction={caseType === "all" ? (id) => handleTakeAction(id) : undefined}
-                  onTrack={caseType === "ongoing" ? (id) => handleTrack(id) : undefined}
-                  showTrackButton={caseType === "ongoing"}
-                />
-              ))
+              filteredRescues.map((rescue) => {
+                const adoptionInfo = adoptionStatusMap[rescue.id];
+                const adoptedAnimal = adoptedAnimals[rescue.id];
+                
+                if (caseType === "completed" || caseType === "adopted") {
+                  console.log(`[Dashboard] Rendering case ${rescue.id}:`, {
+                    hasAdoptionInfo: !!adoptionInfo,
+                    hasAdoptedAnimal: !!adoptedAnimal,
+                    adoptionStatus: adoptionInfo?.status,
+                    caseType
+                  });
+                }
+                
+                // In adopted tab, show all adopted animals with adoption card
+                if (caseType === "adopted" && adoptedAnimal && adoptionInfo?.status === "adopted") {
+                  return (
+                    <AdoptionCard
+                      key={rescue.id}
+                      animal={adoptedAnimal}
+                      onAdopt={undefined}
+                      buttonText="Adopted"
+                    />
+                  );
+                }
+                
+                // If case is pushed for adoption and available, show AdoptionCard with Mark as Adopted button
+                if (caseType === "completed" && adoptedAnimal && adoptionInfo?.status === "available") {
+                  return (
+                    <AdoptionCard
+                      key={rescue.id}
+                      animal={adoptedAnimal}
+                      onAdopt={() => handleMarkAsAdopted(adoptionInfo.adoption_id, rescue.id)}
+                      buttonText="Mark as Adopted"
+                    />
+                  );
+                }
+                
+                // Otherwise show regular RescueCard
+                return (
+                  <RescueCard
+                    key={rescue.id}
+                    rescue={rescue}
+                    onTakeAction={caseType === "all" ? (id) => handleTakeAction(id) : undefined}
+                    onTrack={caseType === "ongoing" ? (id) => handleTrack(id) : undefined}
+                    showTrackButton={caseType === "ongoing"}
+                    onPushForAdoption={caseType === "completed" && !adoptedAnimal ? (id) => handlePushForAdoption(id) : undefined}
+                    showAdoptionButton={caseType === "completed" && !adoptedAnimal}
+                    onMarkAsAdopted={undefined}
+                    adoptionStatus={adoptionInfo?.status}
+                  />
+                );
+              })
             ) : (
               <div className="col-span-full">
                 <Card style={{ background: "#eaf7ff" }}>
@@ -606,6 +908,207 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (p: string)
           <MapView rescues={filteredRescues} />
         )}
       </div>
+
+      {/* Adoption Modal */}
+      <Dialog open={showAdoptionModal} onOpenChange={setShowAdoptionModal}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Push Animal for Adoption</DialogTitle>
+            <DialogDescription>
+              Fill in the details to post this rescued animal for adoption
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-4 py-4">
+            {/* Name */}
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="name" className="text-right">Name *</Label>
+              <Input
+                id="name"
+                value={adoptionForm.name}
+                onChange={(e) => setAdoptionForm(prev => ({ ...prev, name: e.target.value }))}
+                className="col-span-3"
+                placeholder="e.g., Max"
+              />
+            </div>
+
+            {/* Animal Type */}
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="animal_type" className="text-right">Animal Type *</Label>
+              <Select value={adoptionForm.animal_type} onValueChange={(v) => setAdoptionForm(prev => ({ ...prev, animal_type: v }))}>
+                <SelectTrigger className="col-span-3">
+                  <SelectValue placeholder="Select type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Dog">Dog</SelectItem>
+                  <SelectItem value="Cat">Cat</SelectItem>
+                  <SelectItem value="Bird">Bird</SelectItem>
+                  <SelectItem value="Rabbit">Rabbit</SelectItem>
+                  <SelectItem value="Other">Other</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Age */}
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="age" className="text-right">Age *</Label>
+              <Input
+                id="age"
+                value={adoptionForm.age}
+                onChange={(e) => setAdoptionForm(prev => ({ ...prev, age: e.target.value }))}
+                className="col-span-3"
+                placeholder="e.g., 2 years, 6 months"
+              />
+            </div>
+
+            {/* Gender */}
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="gender" className="text-right">Gender</Label>
+              <Select value={adoptionForm.gender} onValueChange={(v) => setAdoptionForm(prev => ({ ...prev, gender: v }))}>
+                <SelectTrigger className="col-span-3">
+                  <SelectValue placeholder="Select gender" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Male">Male</SelectItem>
+                  <SelectItem value="Female">Female</SelectItem>
+                  <SelectItem value="Unknown">Unknown</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Breed */}
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="breed" className="text-right">Breed</Label>
+              <Input
+                id="breed"
+                value={adoptionForm.breed}
+                onChange={(e) => setAdoptionForm(prev => ({ ...prev, breed: e.target.value }))}
+                className="col-span-3"
+                placeholder="e.g., Labrador, Persian"
+              />
+            </div>
+
+            {/* Size */}
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="size" className="text-right">Size</Label>
+              <Select value={adoptionForm.size} onValueChange={(v) => setAdoptionForm(prev => ({ ...prev, size: v }))}>
+                <SelectTrigger className="col-span-3">
+                  <SelectValue placeholder="Select size" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Small">Small</SelectItem>
+                  <SelectItem value="Medium">Medium</SelectItem>
+                  <SelectItem value="Large">Large</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Checkboxes */}
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label className="text-right">Health Info</Label>
+              <div className="col-span-3 space-y-2">
+                <div className="flex items-center space-x-2">
+                  <Checkbox 
+                    id="neutered"
+                    checked={adoptionForm.neutered}
+                    onCheckedChange={(checked) => setAdoptionForm(prev => ({ ...prev, neutered: checked as boolean }))}
+                  />
+                  <label htmlFor="neutered" className="text-sm">Neutered/Spayed</label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Checkbox 
+                    id="vaccinated"
+                    checked={adoptionForm.vaccinated}
+                    onCheckedChange={(checked) => setAdoptionForm(prev => ({ ...prev, vaccinated: checked as boolean }))}
+                  />
+                  <label htmlFor="vaccinated" className="text-sm">Vaccinated</label>
+                </div>
+              </div>
+            </div>
+
+            {/* Temperament Checkboxes */}
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label className="text-right">Temperament</Label>
+              <div className="col-span-3 space-y-2">
+                <div className="flex items-center space-x-2">
+                  <Checkbox 
+                    id="good_with_kids"
+                    checked={adoptionForm.good_with_kids}
+                    onCheckedChange={(checked) => setAdoptionForm(prev => ({ ...prev, good_with_kids: checked as boolean }))}
+                  />
+                  <label htmlFor="good_with_kids" className="text-sm">Good with kids</label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Checkbox 
+                    id="good_with_pets"
+                    checked={adoptionForm.good_with_pets}
+                    onCheckedChange={(checked) => setAdoptionForm(prev => ({ ...prev, good_with_pets: checked as boolean }))}
+                  />
+                  <label htmlFor="good_with_pets" className="text-sm">Good with other pets</label>
+                </div>
+              </div>
+            </div>
+
+            {/* Health Status */}
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="health_status" className="text-right">Health Status</Label>
+              <Input
+                id="health_status"
+                value={adoptionForm.health_status}
+                onChange={(e) => setAdoptionForm(prev => ({ ...prev, health_status: e.target.value }))}
+                className="col-span-3"
+                placeholder="e.g., Healthy, Recovering"
+              />
+            </div>
+
+            {/* Temperament Text */}
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="temperament" className="text-right">Temperament</Label>
+              <Input
+                id="temperament"
+                value={adoptionForm.temperament}
+                onChange={(e) => setAdoptionForm(prev => ({ ...prev, temperament: e.target.value }))}
+                className="col-span-3"
+                placeholder="e.g., Friendly, Shy, Playful"
+              />
+            </div>
+
+            {/* Description */}
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="description" className="text-right">Description</Label>
+              <Textarea
+                id="description"
+                value={adoptionForm.description}
+                onChange={(e) => setAdoptionForm(prev => ({ ...prev, description: e.target.value }))}
+                className="col-span-3"
+                placeholder="Tell potential adopters about this animal..."
+                rows={3}
+              />
+            </div>
+
+            {/* Image Upload */}
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="image" className="text-right">Photo *</Label>
+              <Input
+                id="image"
+                type="file"
+                accept="image/*"
+                onChange={handleImageChange}
+                className="col-span-3"
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowAdoptionModal(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleSubmitAdoption} disabled={submittingAdoption}>
+              {submittingAdoption ? "Submitting..." : "Post for Adoption"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }// "use client";

@@ -69,9 +69,21 @@ export function Navbar() {
         if (BACKEND_API) {
           try {
             const idToken = await u.getIdToken();
+            const headers: Record<string, string> = {
+              Authorization: `Bearer ${idToken}`,
+            };
+            
+            // In local development, also send X-UID and X-EMAIL headers for easier testing
+            if (BACKEND_API.includes('localhost') || BACKEND_API.includes('127.0.0.1')) {
+              headers['X-UID'] = u.uid;
+              if (u.email) {
+                headers['X-EMAIL'] = u.email;
+              }
+            }
+            
             const userResp = await fetch(`${BACKEND_API}/users/profile`, {
               method: "GET",
-              headers: { Authorization: `Bearer ${idToken}` },
+              headers,
             });
             if (userResp.ok) {
               const data = await userResp.json().catch(() => ({}));

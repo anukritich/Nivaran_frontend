@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Search, Filter, Heart } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -36,6 +36,8 @@ const THEME = {
   text: "#fff"
 };
 
+const BACKEND_API = process.env.NEXT_PUBLIC_BACKEND_API || "http://127.0.0.1:3000";
+
 export default function AdoptionPage({ onNavigate }: AdoptionPageProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [filterType, setFilterType] = useState("all");
@@ -50,90 +52,73 @@ export default function AdoptionPage({ onNavigate }: AdoptionPageProps) {
     experience: "",
     reason: "",
   });
+  const [animals, setAnimals] = useState<AdoptionAnimal[]>([]);
+  const [loading, setLoading] = useState(false);
 
-  // Mock adoption data
-  const mockAnimals: AdoptionAnimal[] = [
-    {
-      id: "1",
-      name: "Max",
-      type: "Dog",
-      breed: "Golden Retriever Mix",
-      age: "2 years",
-      gender: "Male",
-      location: "Mumbai, Maharashtra",
-      imageUrl: "https://images.unsplash.com/photo-1671564831911-b357c38f5d69?w=400",
-      description: "Friendly and energetic dog, loves to play fetch and great with kids. Fully trained and well-behaved.",
-      vaccinated: true,
-      neutered: true,
-    },
-    {
-      id: "2",
-      name: "Luna",
-      type: "Cat",
-      breed: "Persian",
-      age: "1 year",
-      gender: "Female",
-      location: "Mumbai, Maharashtra",
-      imageUrl: "https://images.unsplash.com/photo-1415369629372-26f2fe60c467?w=400",
-      description: "Beautiful and calm cat, loves cuddles and quiet environments. Perfect for apartment living.",
-      vaccinated: true,
-      neutered: false,
-    },
-    {
-      id: "3",
-      name: "Buddy",
-      type: "Dog",
-      breed: "Labrador",
-      age: "3 years",
-      gender: "Male",
-      location: "Pune, Maharashtra",
-      imageUrl: "https://images.unsplash.com/photo-1553434133-96822a8e94af?w=400",
-      description: "Loyal companion, trained guard dog. Great with families and very protective. Needs regular exercise.",
-      vaccinated: true,
-      neutered: true,
-    },
-    {
-      id: "4",
-      name: "Bella",
-      type: "Dog",
-      breed: "Indie Mix",
-      age: "6 months",
-      gender: "Female",
-      location: "Mumbai, Maharashtra",
-      imageUrl: "https://images.unsplash.com/photo-1700665537604-412e89a285c3?w=400",
-      description: "Playful puppy, very friendly with other pets. Learning basic commands and house training.",
-      vaccinated: true,
-      neutered: false,
-    },
-    {
-      id: "5",
-      name: "Milo",
-      type: "Cat",
-      breed: "Siamese Mix",
-      age: "2 years",
-      gender: "Male",
-      location: "Delhi, NCR",
-      imageUrl: "https://images.unsplash.com/photo-1617835963886-d504ab3cca44?w=400",
-      description: "Intelligent and talkative cat. Loves attention and enjoys interactive play. Good with children.",
-      vaccinated: true,
-      neutered: true,
-    },
-    {
-      id: "6",
-      name: "Daisy",
-      type: "Dog",
-      breed: "Beagle",
-      age: "4 years",
-      gender: "Female",
-      location: "Bangalore, Karnataka",
-      imageUrl: "https://images.unsplash.com/photo-1553434133-96822a8e94af?w=400",
-      description: "Sweet and gentle, great for first-time dog owners. Loves long walks and treats.",
-      vaccinated: true,
-      neutered: true,
-    },
-  ];
+  // Fetch adoptions from backend
+  const fetchAdoptions = useCallback(async () => {
+    try {
+      setLoading(true);
+      const res = await fetch(`${BACKEND_API}/adoptions?status=available`);
+      if (!res.ok) {
+        toast.error("Failed to load adoptions");
+        return;
+      }
+      const data = await res.json();
+      
+      // Fetch presigned URLs for images in batches
+      const enriched: AdoptionAnimal[] = [];
+      const batchSize = 6;
+      
+      for (let i = 0; i < data.length; i += batchSize) {
+        const batch = data.slice(i, i + batchSize);
+        const batchPromises = batch.map(async (item: any) => {
+          let imageUrl = "";
+          if (item.adoption_id) {
+            try {
+              const imgRes = await fetch(`${BACKEND_API}/adoptions/${item.adoption_id}/image-url`);
+              if (imgRes.ok) {
+                const imgData = await imgRes.json();
+                imageUrl = imgData.url;
+              }
+            } catch (e) {
+              console.warn("Failed to fetch image for", item.adoption_id);
+            }
+          }
+          
+          return {
+            id: item.adoption_id,
+            name: item.name,
+            type: item.animal_type,
+            breed: item.breed || "Mixed Breed",
+            age: item.age,
+            gender: item.gender || "Unknown",
+            location: "Available for Adoption", // Could add NGO location if needed
+            imageUrl,
+            description: item.description || "",
+            vaccinated: item.vaccinated || false,
+            neutered: item.neutered || false,
+          } as AdoptionAnimal;
+        });
+        
+        const results = await Promise.all(batchPromises);
+        enriched.push(...results);
+      }
+      
+      setAnimals(enriched);
+    } catch (err) {
+      console.error("Fetch adoptions error", err);
+      toast.error("Failed to load adoptions");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-  const filteredAnimals = mockAnimals.filter((animal) => {
+  useEffect(() => {
+    fetchAdoptions();
+  }, [fetchAdoptions]);
+
+  const filteredAnimals = animals.filter((animal) => {
     const matchesSearch =
       searchQuery === "" ||
       animal.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -146,7 +131,7 @@ export default function AdoptionPage({ onNavigate }: AdoptionPageProps) {
   });
 
   const handleAdopt = (id: string) => {
-    const animal = mockAnimals.find((a) => a.id === id);
+    const animal = animals.find((a) => a.id === id);
     if (animal) {
       setSelectedAnimal(animal);
       setIsDialogOpen(true);
@@ -184,24 +169,24 @@ export default function AdoptionPage({ onNavigate }: AdoptionPageProps) {
         <div style={{ background: THEME.primary, color: THEME.text }} className="rounded-lg p-6 mb-8 text-center">
           <div className="flex flex-col md:flex-row justify-center items-center gap-8">
             <div>
-              <div className="text-3xl font-bold">{mockAnimals.length}</div>
+              <div className="text-3xl font-bold">{animals.length}</div>
               <p className="text-sm">Animals Available</p>
             </div>
             <div>
               <div className="text-3xl font-bold">
-                {mockAnimals.filter((a) => a.type === "Dog").length}
+                {animals.filter((a) => a.type === "Dog").length}
               </div>
               <p className="text-sm">Dogs</p>
             </div>
             <div>
               <div className="text-3xl font-bold">
-                {mockAnimals.filter((a) => a.type === "Cat").length}
+                {animals.filter((a) => a.type === "Cat").length}
               </div>
               <p className="text-sm">Cats</p>
             </div>
             <div>
               <div className="text-3xl font-bold">
-                {mockAnimals.filter((a) => a.vaccinated).length}
+                {animals.filter((a) => a.vaccinated).length}
               </div>
               <p className="text-sm">Vaccinated</p>
             </div>
@@ -248,11 +233,16 @@ export default function AdoptionPage({ onNavigate }: AdoptionPageProps) {
         </Card>
 
         {/* Animals Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredAnimals.length > 0 ? (
-            filteredAnimals.map((animal) => (
-              <AdoptionCard
-                key={animal.id}
+        {loading ? (
+          <div className="flex justify-center items-center py-16">
+            <div className="text-lg" style={{ color: THEME.primary }}>Loading animals...</div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {filteredAnimals.length > 0 ? (
+              filteredAnimals.map((animal) => (
+                <AdoptionCard
+                  key={animal.id}
                 animal={animal}
                 onAdopt={handleAdopt}
               />
@@ -268,7 +258,8 @@ export default function AdoptionPage({ onNavigate }: AdoptionPageProps) {
               </Card>
             </div>
           )}
-        </div>
+          </div>
+        )}
 
         {/* Adoption Form Dialog */}
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>

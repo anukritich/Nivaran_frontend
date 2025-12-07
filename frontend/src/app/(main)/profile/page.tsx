@@ -82,12 +82,23 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
 
   // Fetch profile: prefer authenticated idToken, but if none and localStorage.email exists (dev),
   // send X-EMAIL header so backend in LOCAL_DEV mode can return profile.
-  async function fetchProfileWithToken(idToken?: string, devEmail?: string) {
+  async function fetchProfileWithToken(idToken?: string, devEmail?: string, userId?: string) {
     setLoading(true);
     try {
       const headers: Record<string, string> = { "Content-Type": "application/json" };
-      if (idToken) headers["Authorization"] = `Bearer ${idToken}`;
-      else if (devEmail) headers["X-EMAIL"] = devEmail;
+      if (idToken) {
+        headers["Authorization"] = `Bearer ${idToken}`;
+        
+        // In local development, also send X-UID and X-EMAIL headers for easier testing
+        if (BACKEND_API && (BACKEND_API.includes('localhost') || BACKEND_API.includes('127.0.0.1'))) {
+          if (userId) headers['X-UID'] = userId;
+          if (devEmail) headers['X-EMAIL'] = devEmail;
+        }
+      } else if (devEmail && userId) {
+        // Dev mode without auth token
+        headers["X-EMAIL"] = devEmail;
+        headers["X-UID"] = userId;
+      }
 
       const res = await fetch(`${BACKEND_API}/users/profile`, { method: "GET", headers });
       if (!res.ok) {
@@ -118,10 +129,11 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
     const auth = getAuth();
     const unsub = onAuthStateChanged(auth, async (u) => {
       if (!u) {
-        // If a developer left an email in localStorage, try to use it in LOCAL_DEV mode
+        // If a developer left an email and uid in localStorage, try to use them in LOCAL_DEV mode
         const devEmail = typeof window !== "undefined" ? localStorage.getItem("email") : null;
-        if (devEmail && BACKEND_API) {
-          const profile = await fetchProfileWithToken(undefined, devEmail);
+        const devUid = typeof window !== "undefined" ? localStorage.getItem("uid") : null;
+        if (devEmail && devUid && BACKEND_API) {
+          const profile = await fetchProfileWithToken(undefined, devEmail, devUid);
           if (profile) {
             setProfileData(profile);
             return;
@@ -133,11 +145,14 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
 
       try {
         const idToken = await u.getIdToken();
-        const profile = await fetchProfileWithToken(idToken, undefined);
+        const profile = await fetchProfileWithToken(idToken, u.email || undefined, u.uid);
         if (profile) {
           setProfileData(profile);
-          // ensure localStorage email is set for easy reference elsewhere
-          try { localStorage.setItem("email", profile.email || u.email || ""); } catch (e) {}
+          // ensure localStorage email and uid are set for easy reference elsewhere
+          try { 
+            localStorage.setItem("email", profile.email || u.email || "");
+            localStorage.setItem("uid", u.uid);
+          } catch (e) {}
         } else {
           // fallback: populate from firebase user fields
           setProfileData({

@@ -27,9 +27,10 @@ export interface AdoptionAnimal {
 interface AdoptionCardProps {
   animal: AdoptionAnimal;
   onAdopt?: (id: string) => void;
+  buttonText?: string;
 }
 
-export function AdoptionCard({ animal, onAdopt }: AdoptionCardProps) {
+export function AdoptionCard({ animal, onAdopt, buttonText }: AdoptionCardProps) {
   return (
     <Card className="overflow-hidden hover:shadow-lg transition-shadow">
       <div className="h-56 overflow-hidden">
@@ -82,7 +83,7 @@ export function AdoptionCard({ animal, onAdopt }: AdoptionCardProps) {
             className="w-full"
             style={{ background: THEME.cta, color: "#fff", fontWeight: 600 }}
           >
-            Adopt {animal.name}
+            {buttonText || `Adopt ${animal.name}`}
           </Button>
         </CardFooter>
       )}

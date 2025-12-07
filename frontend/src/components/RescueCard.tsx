@@ -1,4 +1,4 @@
-import { MapPin, Clock, AlertCircle, Navigation } from "lucide-react";
+import { MapPin, Clock, AlertCircle, Navigation, Heart, Check } from "lucide-react";
 import { Card, CardContent, CardFooter, CardHeader } from "./ui/card";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
@@ -21,7 +21,11 @@ interface RescueCardProps {
   rescue: RescueCase;
   onTakeAction?: (id: string) => void;
   onTrack?: (id: string) => void;
+  onPushForAdoption?: (id: string) => void;
+  onMarkAsAdopted?: (id: string) => void;
   showTrackButton?: boolean;
+  showAdoptionButton?: boolean;
+  adoptionStatus?: string;
 }
 
 /**
@@ -30,7 +34,16 @@ interface RescueCardProps {
  * - Uses theme-consistent colors for icons and button.
  * - Keeps existing badge color classes unchanged.
  */
-export function RescueCard({ rescue, onTakeAction, onTrack, showTrackButton }: RescueCardProps) {
+export function RescueCard({ 
+  rescue, 
+  onTakeAction, 
+  onTrack, 
+  onPushForAdoption, 
+  onMarkAsAdopted,
+  showTrackButton, 
+  showAdoptionButton,
+  adoptionStatus 
+}: RescueCardProps) {
   const severityColors = {
     Low: "bg-green-100 text-green-800 border-green-200",
     Medium: "bg-yellow-100 text-yellow-800 border-yellow-200",
@@ -110,7 +123,7 @@ export function RescueCard({ rescue, onTakeAction, onTrack, showTrackButton }: R
         </div>
       </CardContent>
 
-      {(onTakeAction && isActionable) || (onTrack && showTrackButton) ? (
+      {(onTakeAction && isActionable) || (onTrack && showTrackButton) || (onPushForAdoption && showAdoptionButton) ? (
         <CardFooter className="flex gap-2">
           {onTakeAction && isActionable && (
             <Button
@@ -139,6 +152,46 @@ export function RescueCard({ rescue, onTakeAction, onTrack, showTrackButton }: R
               <Navigation className="w-4 h-4 mr-2" />
               Track
             </Button>
+          )}
+          {onPushForAdoption && showAdoptionButton && !adoptionStatus && (
+            <Button
+              onClick={() => onPushForAdoption(rescue.id)}
+              className="flex-1"
+              style={{
+                background: "#10B981",
+                color: "#fff",
+                borderColor: "transparent",
+              }}
+            >
+              <Heart className="w-4 h-4 mr-2" />
+              Push for Adoption
+            </Button>
+          )}
+          {adoptionStatus === "available" && onMarkAsAdopted && (
+            <Button
+              onClick={() => onMarkAsAdopted(rescue.id)}
+              className="flex-1"
+              style={{
+                background: "#8B5CF6",
+                color: "#fff",
+                borderColor: "transparent",
+              }}
+            >
+              <Check className="w-4 h-4 mr-2" />
+              Mark as Adopted
+            </Button>
+          )}
+          {adoptionStatus === "adopted" && (
+            <Badge
+              className="flex-1 justify-center py-2"
+              style={{
+                background: "#059669",
+                color: "#fff",
+              }}
+            >
+              <Check className="w-4 h-4 mr-2" />
+              Adopted
+            </Badge>
           )}
         </CardFooter>
       ) : null}
