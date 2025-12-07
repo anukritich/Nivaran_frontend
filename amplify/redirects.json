@@ -1,0 +1,12 @@
+[
+  {
+    "source": "</^[^.]+$|.(?!js$|css$|gif$|jpg$|jpeg$|png$|webp$|svg$|woff$|woff2$|ttf$|eot$|otf$)$/?>",
+    "destination": "/index.html",
+    "status": "200"
+  },
+  {
+    "source": "/</>",
+    "destination": "/404.html",
+    "status": "404"
+  }
+]
